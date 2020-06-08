@@ -75,23 +75,44 @@ def validate(wlfw_val_dataloader, plfd_backbone, auxiliarynet, criterion):
     auxiliarynet.eval() 
     landmark_losses = []
     angle_losses = []
+    IPN_array = []
     with torch.no_grad():
         for img, landmark_gt, attribute_gt, euler_angle_gt in tqdm(wlfw_val_dataloader):
             img = img.to(device)
             # attribute_gt = attribute_gt.to(device)
             landmark_gt = landmark_gt.to(device)
+            landmark_gt_2 = landmark_gt.reshape(landmark_gt.shape[0], -1, 2)  # landmark
+            # print(landmark_gt_2.shape)
+            d = []
+            for i in range(len(landmark_gt)):
+                # left_eye_x = landmark_gt[i][96 * 2]
+                # left_eye_y = landmark_gt[i][96 * 2 + 1]
+                # right_eye_x = landmark_gt[i][97 * 2]
+                # right_eye_y = landmark_gt[i][97 * 2 + 1]     # 98点
+                left_eye_x = landmark_gt[i][15 * 2]
+                left_eye_y = landmark_gt[i][15 * 2 + 1]
+                right_eye_x = landmark_gt[i][16 * 2]
+                right_eye_y = landmark_gt[i][16 * 2 + 1]     # 17点
+                d.append(torch.sqrt((right_eye_x-left_eye_x) ** 2 + (right_eye_y-left_eye_y) ** 2))
+            d = torch.tensor(d).to(device)
             euler_angle_gt = euler_angle_gt.to(device)
             plfd_backbone = plfd_backbone.to(device)
             auxiliarynet = auxiliarynet.to(device)
             features, landmark = plfd_backbone(img)
+            landmarks_2 = landmark.reshape(landmark.shape[0], -1, 2)  # landmark
+            # print(landmarks_2.shape)
             angle = auxiliarynet(features)
             landmark_loss = torch.mean(torch.sum((landmark_gt - landmark)**2, axis=1))
-            angle_loss = torch.mean(torch.sum(1 - torch.cos(angle - (euler_angle_gt * np.pi / 180)), axis=1))
+            angle_loss = torch.mean(torch.sum(1 - torch.cos(angle - (euler_angle_gt * np.pi / 180.0)), axis=1) + 0.00000001)
+            # angle_loss = torch.mean(torch.sum(torch.abs(angle - euler_angle_gt), axis=1))
+            IPN = torch.mean(torch.mean(torch.sqrt(torch.sum((landmark_gt_2 - landmarks_2)**2, axis=2))) / d)
             landmark_losses.append(landmark_loss.cpu().numpy())
             angle_losses.append(angle_loss.cpu().numpy())
+            IPN_array.append(IPN.cpu().numpy())
     print("=====> Evaluate:")
     print('Eval set: Average landmark loss: {:.4f} '.format(np.mean(landmark_losses)))
     print('Eval set: Average euler angle loss: {:.4f} '.format(np.mean(angle_losses)))
+    print('Eval set: Average Inter-pupil Normalization (IPN): {:.4f}'.format(np.mean(IPN_array)))
     return np.mean(landmark_losses)
 
 
@@ -111,10 +132,10 @@ def main(args):
 
 
     # Step 2: model, criterion, optimizer, scheduler
-    plfd_backbone = PFLDInference().to(device)
+    plfd_backbone = PFLDInference(drop_prob=args.dropout_prob, width_mult=args.width_mult).to(device)   #
     summary(plfd_backbone, input_size=(3,112,112))
-    auxiliarynet = AuxiliaryNet().to(device)
-    criterion = PFLDLoss()
+    auxiliarynet = AuxiliaryNet(drop_prob=args.dropout_prob).to(device)
+    criterion = PFLDLoss(mode='wing')
     optimizer = torch.optim.Adam([
                                     {'params': plfd_backbone.parameters()},
                                     {'params': auxiliarynet.parameters()}
@@ -123,7 +144,7 @@ def main(args):
         betas=(0.9,0.999),
         eps=1e-08,
         weight_decay=args.weight_decay)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=args.lr_patience, verbose=True)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.95, patience=args.lr_patience, verbose=True, min_lr=args.end_lr)
     val_loss_best = 99999
 
     # step 3: data
@@ -158,6 +179,7 @@ def main(args):
         }, filename)
 
         print('train的weight_loss为{:.4f}'.format(weighted_train_loss))
+        # scheduler.step(weighted_train_loss)
         val_loss = validate(wlfw_val_dataloader, plfd_backbone, auxiliarynet,
                             criterion)
 
@@ -178,16 +200,23 @@ def parse_args():
     parser.add_argument('--devices_id', default='0', type=str)
     parser.add_argument('--test_initial', default='false', type=str2bool)  #TBD
 
+    # model
+    parser.add_argument('--width_mult', default=1.0, type=float)   # width_multiplier
+
     # training
     ##  -- optimizer
-    parser.add_argument('--base_lr', default=0.0001, type=int)
+    parser.add_argument('--base_lr', default=1e-4, type=float)
+    parser.add_argument('--end_lr', default=1e-4, type=float)
     parser.add_argument('--weight-decay', '--wd', default=1e-6, type=float)
 
     # -- lr
-    parser.add_argument('--lr_patience', default=40, type=int)
+    parser.add_argument('--lr_patience', default=50, type=int)
+
+    # -- overfitting
+    parser.add_argument('--dropout_prob', default=0.5, type=float)
 
     # -- loss
-    parser.add_argument('--euler_angle_weight', default=2, type=int)
+    parser.add_argument('--euler_angle_weight', default=1, type=float)
 
     # -- epoch
     parser.add_argument('--start_epoch', default=0, type=int)

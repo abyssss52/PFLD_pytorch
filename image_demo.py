@@ -13,7 +13,7 @@ import torch.backends.cudnn as cudnn
 from dataset.datasets import WLFWDatasets
 from dataset.datasets import WLFWDatasets_image_demo
 
-from models.pfld import PFLDInference, AuxiliaryNet
+from models.pfld_multi import PFLDInference, AuxiliaryNet
 
 cudnn.benchmark = True
 cudnn.determinstic = True
@@ -22,7 +22,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def image_inference(loader, plfd_backbone, auxiliary_backbone):
     plfd_backbone.eval()
-
+    auxiliary_backbone.eval()
     # nme_list = []
     cost_time = 0
     with torch.no_grad():
@@ -42,7 +42,7 @@ def image_inference(loader, plfd_backbone, auxiliary_backbone):
             landmarks = landmarks.reshape(landmarks.shape[0], -1, 2) # landmark
 
             if args.show_image:
-                print(img.cpu().numpy().shape)
+                # print(img.cpu().numpy().shape)
                 show_img = np.array(np.transpose(img[0].cpu().numpy(), (1, 2, 0)))
                 show_img = (show_img * 255).astype(np.uint8)
                 np.clip(show_img, 0, 255)
@@ -52,10 +52,18 @@ def image_inference(loader, plfd_backbone, auxiliary_backbone):
                 cv2.imwrite("xxx.jpg", show_img)
                 img_clone = cv2.imread("xxx.jpg")
                 idx = 0
-                for (x, y) in pre_landmark.astype(np.int32):
-                    cv2.circle(img_clone, (x, y), 1, (255,0,0),-1)
-                    # cv2.putText(img_clone, str(idx), (x+1,y+1), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.3, color=(0,0,0), thickness=1)
-                    idx += 1
+                # for (x, y) in pre_landmark.astype(np.int32):
+                #     cv2.circle(img_clone, (x, y), 1, (255,0,0),-1)
+                #     # cv2.putText(img_clone, str(idx), (x+1,y+1), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.3, color=(0,0,0), thickness=1)
+                #     idx += 1
+                #
+                # for i in [96,97,54,76,82]:
+                #     x, y = pre_landmark.astype(np.int32)[i]
+                #     cv2.circle(img_clone, (x,y), 1, (255, 0, 0), -1)
+
+                x, y = pre_landmark.astype(np.int32)[11]
+                cv2.circle(img_clone, (x, y), 1, (255, 0, 0), -1)
+
                 cv2.imshow("result", img_clone)
                 if cv2.waitKey(0) == ord('n'):
                     break
@@ -76,22 +84,25 @@ def image_inference(loader, plfd_backbone, auxiliary_backbone):
 
 def main(args):
     checkpoint = torch.load(args.model_path, map_location=device)
-    plfd_backbone = PFLDInference().to(device)
-    auxiliary_backbone = AuxiliaryNet().to(device)
+    plfd_backbone = PFLDInference(drop_prob=0,width_mult=0.5).to(device)
+    auxiliary_backbone = AuxiliaryNet(drop_prob=0).to(device)
     plfd_backbone.load_state_dict(checkpoint['plfd_backbone'])
     auxiliary_backbone.load_state_dict(checkpoint['auxiliarynet'])
 
     transform = transforms.Compose([transforms.ToTensor()])
-    image_path = '/home/night/图片/temp/face_mask/'#'/home/night/PycharmProjects/face/head_pose_estimation/PFLD-pytorch/data/WFLW/WFLW_images/40--Gymnastics'#
+    image_path = '/home/night/图片/temp/face_mask/'#'/home/night/Datasets/face/300W-LP/AFW'# '/home/night/Datasets/face/face_mask/val/face'# '/home/night/PycharmProjects/face/head_pose_estimation/PFLD-pytorch/data/WFLW/WFLW_images/40--Gymnastics'#
     for img in os.listdir(image_path):
-        image_test = WLFWDatasets_image_demo(os.path.join(image_path,img), transform)   # args.test_image, transform
-        # wlfw_val_dataset = WLFWDatasets(args.test_dataset, transform)
-        image_test_dataloader = DataLoader(image_test, batch_size=1, shuffle=False, num_workers=0)
-        image_inference(image_test_dataloader, plfd_backbone, auxiliary_backbone)
+
+        (filename, extension) = os.path.splitext(img)
+        if extension == '.jpg':
+            image_test = WLFWDatasets_image_demo(os.path.join(image_path,img), transform)   # args.test_image, transform
+            # wlfw_val_dataset = WLFWDatasets(args.test_dataset, transform)
+            image_test_dataloader = DataLoader(image_test, batch_size=1, shuffle=False, num_workers=0)
+            image_inference(image_test_dataloader, plfd_backbone, auxiliary_backbone)
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Testing')
-    parser.add_argument('--model_path', default="./checkpoint/snapshot/epoch_70.pth.tar", type=str)   # "./checkpoint/snapshot/checkpoint.pth.tar"    epoch_404.pth.tar
+    parser.add_argument('--model_path', default="./checkpoint/snapshot/17points/050/epoch_68.pth.tar", type=str)  # "./checkpoint/snapshot/17points/epoch_140.pth.tar" # "./checkpoint/snapshot/checkpoint.pth.tar"    epoch_404.pth.tar
     parser.add_argument('--test_image', default='/home/night/图片/temp/face_mask/IMG_20200331_103908.jpg',type=str)   # '/home/night/PycharmProjects/face/head_pose_estimation/PFLD-pytorch/data/test_data/imgs/8_9_Press_Conference_Press_Conference_9_477_0.png'
     # parser.add_argument('--test_dataset', default='./data/test_data/list.txt', type=str)
     parser.add_argument('--show_image', default=True, type=bool)

@@ -7,20 +7,20 @@ import torchvision
 from torchvision import transforms
 import cv2
 
-from models.pfld import PFLDInference, AuxiliaryNet
-from mtcnn.detector import detect_faces, show_bboxes
+from models.pfld_multi import PFLDInference, AuxiliaryNet
+from mtcnn1.detector import detect_faces, show_bboxes
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def main(args):
     checkpoint = torch.load(args.model_path, map_location=device)
-    plfd_backbone = PFLDInference().to(device)
+    plfd_backbone = PFLDInference(drop_prob=0,width_mult=0.5).to(device)
     plfd_backbone.load_state_dict(checkpoint['plfd_backbone'])
     plfd_backbone.eval()
     plfd_backbone = plfd_backbone.to(device)
     transform = transforms.Compose([transforms.ToTensor()])
 
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(0)    # './2.mp4'
     while True:
         ret, img = cap.read()
         if not ret: break
@@ -59,16 +59,16 @@ def main(args):
             cropped = cv2.resize(cropped, (112, 112))
 
             input = cv2.resize(cropped, (112, 112))
-            input = cv2.cvtColor(input, cv2.COLOR_BGR2RGB)
+            # input = cv2.cvtColor(input, cv2.COLOR_BGR2RGB)
             input = transform(input).unsqueeze(0).to(device)
             _, landmarks = plfd_backbone(input)
             pre_landmark = landmarks[0]
             pre_landmark = pre_landmark.cpu().detach().numpy().reshape(-1, 2) * [size, size]
             for (x, y) in pre_landmark.astype(np.int32):
-                cv2.circle(img, (x1 + x, y1 + y), 1, (0, 0, 255))
+                cv2.circle(img, (x1 + x, y1 + y), 5, (0, 0, 255), -1)
 
         cv2.imshow('0', img)
-        if cv2.waitKey(10) == 27:
+        if cv2.waitKey(1) == 27:
             break
 
 
@@ -77,7 +77,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Testing')
     parser.add_argument(
         '--model_path',
-        default="./checkpoint/snapshot/checkpoint.pth.tar",
+        default='./checkpoint/snapshot/17points/050/epoch_68.pth.tar',  # './checkpoint/snapshot/epoch_210(0.1493).pth.tar', # "./checkpoint/snapshot/checkpoint.pth.tar"  # './checkpoint/snapshot/17points/epoch_50.pth.tar'
         type=str)
     args = parser.parse_args()
     return args

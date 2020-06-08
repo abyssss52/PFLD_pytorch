@@ -13,6 +13,27 @@ import torch.nn as nn
 import math
 
 
+def _make_divisible(v, divisor, min_value=None):
+    """
+    This function is taken from the original tf repo.
+    It ensures that all layers have a channel number that is divisible by 8
+    It can be seen here:
+    https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet/mobilenet.py
+    :param v:
+    :param divisor:
+    :param min_value:
+    :return:
+    """
+    if min_value is None:
+        min_value = divisor
+    new_v = max(min_value, int(v + divisor / 2) // divisor * divisor)
+    # Make sure that round down does not go down by more than 10%.
+    if new_v < 0.9 * v:
+        new_v += divisor
+    return new_v
+
+
+
 def conv_bn(inp, oup, kernel, stride, padding=1):
     return nn.Sequential(
         nn.Conv2d(inp, oup, kernel, stride, padding, bias=False),
@@ -61,9 +82,9 @@ class InvertedResidual(nn.Module):
 
 
 class PFLDInference(nn.Module):
-    def __init__(self):
+    def __init__(self, drop_prob):
         super(PFLDInference, self).__init__()
-
+        self.drop_prob = drop_prob
         self.conv1 = nn.Conv2d(
             3, 64, kernel_size=3, stride=2, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
@@ -93,12 +114,17 @@ class PFLDInference(nn.Module):
         self.conv6_1 = InvertedResidual(128, 16, 1, False, 2)  # [16, 14, 14]
 
         self.conv7 = conv_bn(16, 32, 3, 2)  # [32, 7, 7]
-        self.conv8 = nn.Conv2d(32, 128, 7, 1, 0)  # [128, 1, 1]
+        self.conv8 = nn.Conv2d(32, 128, kernel_size=7, stride=1, padding=0)  # [128, 1, 1]
         self.bn8 = nn.BatchNorm2d(128)
 
-        self.avg_pool1 = nn.AvgPool2d(14)
-        self.avg_pool2 = nn.AvgPool2d(7)
-        self.fc = nn.Linear(4832, 196)    # (176, 196)
+        # self.avg_pool1 = nn.AvgPool2d(14)
+        # self.avg_pool2 = nn.AvgPool2d(7)
+        self.dropout = nn.Dropout(p=self.drop_prob)
+
+        # self.fc = nn.Linear(4832, 196)    # (176, 196)
+        self.fc = nn.Linear(4832, 34)    # (176, 34)
+
+        # self.feature = self.fc
 
     def forward(self, x):  # x: 3, 112, 112
         x = self.relu(self.bn1(self.conv1(x)))  # [64, 56, 56]
@@ -141,19 +167,22 @@ class PFLDInference(nn.Module):
 
         multi_scale = torch.cat([x1, x2, x3], 1)
         # print('concat后的维度：', multi_scale.shape)
+        # self.feature = multi_scale                            # 可视化需要提取的特征
+        multi_scale = self.dropout(multi_scale)
         landmarks = self.fc(multi_scale)
 
         return out1, landmarks
 
 
 class AuxiliaryNet(nn.Module):
-    def __init__(self):
+    def __init__(self, drop_prob):
         super(AuxiliaryNet, self).__init__()
         self.conv1 = conv_bn(64, 128, 3, 2)
         self.conv2 = conv_bn(128, 128, 3, 1)
         self.conv3 = conv_bn(128, 32, 3, 2)
         self.conv4 = conv_bn(32, 128, 7, 1)
         self.max_pool1 = nn.MaxPool2d(3)
+        self.dropout = nn.Dropout(p=drop_prob)
         self.fc1 = nn.Linear(128, 32)
         self.fc2 = nn.Linear(32, 3)
 
@@ -164,6 +193,8 @@ class AuxiliaryNet(nn.Module):
         x = self.conv4(x)
         x = self.max_pool1(x)
         x = x.view(x.size(0), -1)
+        # self.feature = x                            # 可视化需要提取的特征
+        x = self.dropout(x)
         x = self.fc1(x)
         x = self.fc2(x)
 

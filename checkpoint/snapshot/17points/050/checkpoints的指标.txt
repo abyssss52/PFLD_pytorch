@@ -1,0 +1,15 @@
+Eval set: Average landmark loss: 0.0136 
+Eval set: Average euler angle loss: 0.4276 
+Eval set: Average Inter-pupil Normalization (IPN): 0.0666
+loss最小的epoch:89,最佳的loss为0.0136
+
+with mask
+Eval set: Average landmark loss: 0.0144 
+Eval set: Average euler angle loss: 0.5870 
+Eval set: Average Inter-pupil Normalization (IPN): 0.0695
+loss最小的epoch:54,最佳的loss为0.0144 
+
+Eval set: Average landmark loss: 0.0143 
+Eval set: Average euler angle loss: 0.4555 
+Eval set: Average Inter-pupil Normalization (IPN): 0.0692
+loss最小的epoch:68,最佳的loss为0.0143 

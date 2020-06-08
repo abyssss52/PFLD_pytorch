@@ -4,20 +4,20 @@
 
 import os
 import argparse
-from models.pfld import PFLDInference
+from models.pfld_multi import PFLDInference
 from torch.autograd import Variable
 import torch
 import onnxsim
 
 parser = argparse.ArgumentParser(description='pytorch2onnx')
-parser.add_argument('--torch_model', default="./checkpoint/snapshot/checkpoint.pth.tar")
-parser.add_argument('--onnx_model', default="./output/pfld.onnx")
-parser.add_argument('--onnx_model_sim', help='Output ONNX model', default="./output/pfld-sim.onnx")
+parser.add_argument('--torch_model', default="./checkpoint/snapshot/17points/050/epoch_68.pth.tar")   # checkpoint.pth.tar
+parser.add_argument('--onnx_model', default="./output/pfld_17.onnx")
+parser.add_argument('--onnx_model_sim', help='Output ONNX model', default="./output/pfld_17-sim.onnx")
 args = parser.parse_args()
 
 print("=====> load pytorch checkpoint...")
 checkpoint = torch.load(args.torch_model, map_location=torch.device('cpu'))
-plfd_backbone = PFLDInference()
+plfd_backbone = PFLDInference(drop_prob=0,width_mult=0.5)
 plfd_backbone.load_state_dict(checkpoint['plfd_backbone'])
 print("PFLD bachbone:", plfd_backbone)
 
@@ -33,8 +33,8 @@ import onnx
 model = onnx.load(args.onnx_model)
 onnx.checker.check_model(model)
 
-print("====> Simplifying...")
-model_opt = onnxsim.simplify(args.onnx_model)
-# print("model_opt", model_opt)
-onnx.save(model_opt, args.onnx_model_sim)
-print("onnx model simplify Ok!")
+# print("====> Simplifying...")
+# model_opt = onnxsim.simplify(args.onnx_model)
+# # print("model_opt", model_opt)
+# onnx.save(model_opt, args.onnx_model_sim)
+# print("onnx model simplify Ok!")

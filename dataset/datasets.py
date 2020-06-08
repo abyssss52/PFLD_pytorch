@@ -151,13 +151,19 @@ class WLFWDatasets(data.Dataset):
         self.filenames = None
         self.euler_angle = None
         self.transforms = transforms
+        self.TRACKED_POINTS = [33, 37, 42, 46, 60, 64, 68, 72, 55, 59, 76, 82, 85, 16, 54, 96, 97]
         with open(file_list, 'r') as f:
             self.lines = f.readlines()
         
     def __getitem__(self, index):
         self.line = self.lines[index].strip().split()
+        self.landmarks_17 = []
+        for index in self.TRACKED_POINTS:
+            self.landmarks_17.append(self.line[1 + index * 2])
+            self.landmarks_17.append(self.line[1 + index * 2 + 1])
         self.img = cv2.imread(self.line[0])
-        self.landmark = np.asarray(self.line[1:197], dtype=np.float32)
+        # self.landmark = np.asarray(self.line[1:197], dtype=np.float32)
+        self.landmark = np.asarray(self.landmarks_17, dtype=np.float32)
         self.attribute = np.asarray(self.line[197:203], dtype=np.int32)
         self.euler_angle = np.asarray(self.line[203:206], dtype=np.float32)
         if self.transforms:
